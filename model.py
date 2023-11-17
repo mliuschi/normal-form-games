@@ -1,3 +1,8 @@
+##############################
+## From unofficial PyTorch implementation of Deep Learning for Predicting Human Strategic Behavior (NeurIPS 2016)
+## https://github.com/zudi-lin/human_behavior_prediction/
+##############################
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
