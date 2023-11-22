@@ -55,6 +55,8 @@ if __name__ == '__main__':
     in_dim = 2
     out_dim = 1
     kernels = 32
+    num_layers = 6
+    activation = 'relu'
     mode='max_pool'
     bias = True
     residual = True
@@ -76,11 +78,13 @@ if __name__ == '__main__':
     ntest = len(two_test_loader.dataset) + len(three_test_loader.dataset)
 
     # Create model
-    model_name = "backbone_kernels" + str(kernels) + "_" + mode + "_bias" + str(bias) + "_residual" + str(residual) + "_ep" + str(n_epochs)
+    model_name = "backbone_kernels" + str(kernels) + "_nlayers" + str(num_layers) + "_" + mode + "_bias" + str(bias) + \
+                 "_" + activation + "_residual" + str(residual) + "_ep" + str(n_epochs)
     save_path = "ckpts/" + model_name
 
-    model = GameModelPooling(in_planes=in_dim, out_planes=out_dim, kernels=kernels,
-                             mode=mode, bias=bias, residual=residual).to(device)
+    model = GameModelPooling(in_planes=in_dim, out_planes=out_dim, num_layers=num_layers,
+                             kernels=kernels, mode=mode, bias=bias, residual=residual,
+                             activation=activation).to(device)
     
     print("Number of parameters:", count_params(model))
     print()

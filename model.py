@@ -1,5 +1,5 @@
 ##############################
-## From unofficial PyTorch implementation of Deep Learning for Predicting Human Strategic Behavior (NeurIPS 2016)
+## Partly adapted from unofficial implementation of Deep Learning for Predicting Human Strategic Behavior (NeurIPS 2016)
 ## https://github.com/zudi-lin/human_behavior_prediction/
 ##############################
 
@@ -8,47 +8,63 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class GameModelPooling(nn.Module):
-    def __init__(self, in_planes=2, out_planes=1, kernels=8, mode='max_pool', 
-                 bias=True, residual=False):
+    def __init__(self, in_planes=2, out_planes=1, num_layers=4, kernels=8, mode='max_pool', 
+                 bias=True, residual=False, activation='relu'):
         super().__init__()
 
         assert mode in ['max_pool', 'avg_pool']
         self.mode = mode
         self.residual = residual
+        self.num_layers = num_layers
+        
+        if activation == 'relu':
+            self.activation = F.relu
+        elif activation == 'gelu':
+            self.activation = F.gelu
+        elif activation == 'tanh':
+            self.activation = F.tanh
+        elif activation == 'sigmoid':
+            self.activation = F.sigmoid
+        else:
+            raise NotImplementedError("Activation not implemented!")
 
-        self.conv1 = nn.Conv2d(in_planes, kernels, kernel_size=1, bias=bias)
-        self.conv2 = nn.Conv2d(kernels*3, kernels, kernel_size=1, bias=bias) # kernels * 3 for the pooled concatenated features
-        self.conv3 = nn.Conv2d(kernels*3, kernels, kernel_size=1, bias=bias)        
-        self.conv4 = nn.Conv2d(kernels*3, out_planes, kernel_size=1, bias=bias)
+        if num_layers == 1:
+            kernels = out_planes
+
+        self.convs = torch.nn.ModuleList()
+        for i in range(num_layers):
+            if i == 0:
+                conv_layer = nn.Conv2d(in_planes, kernels, kernel_size=1, bias=bias)
+            elif i == num_layers - 1:
+                conv_layer = nn.Conv2d(3*kernels, out_planes, kernel_size=1, bias=bias) # kernels * 3 for the pooled concatenated features
+            else:
+                conv_layer = nn.Conv2d(3*kernels, kernels, kernel_size=1, bias=bias)
+            self.convs.append(conv_layer)
 
         # normalization layers
-        self.bn1 = nn.BatchNorm2d(kernels)
-        self.bn2 = nn.BatchNorm2d(kernels)
-        self.bn3 = nn.BatchNorm2d(kernels)
+        self.bn = torch.nn.ModuleList([nn.BatchNorm2d(kernels) for i in range(num_layers - 1)])
 
         # weights initialization
         self._init_weight()
 
     def _forward_residual(self, x):
-        x = F.relu(self.bn1(self.conv1(x)))
-        y = x
-        x = self.pool_and_cat(x)
-        x = F.relu(self.bn2(self.conv2(x)) + y)
-        y = x
-        x = self.pool_and_cat(x)
-        x = F.relu(self.bn3(self.conv3(x)) + y)
-        x = self.pool_and_cat(x)
-        x = self.conv4(x)
+        residual = 0.
+        for i in range(self.num_layers):
+            if i < self.num_layers - 1:
+                x = self.activation(self.bn[i](self.convs[i](x)) + residual)
+                residual = x
+                x = self.pool_and_cat(x)
+            else:
+                x = self.convs[i](x)
         return x
 
     def _forward_plain(self, x):
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = self.pool_and_cat(x)
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = self.pool_and_cat(x)
-        x = F.relu(self.bn3(self.conv3(x)))
-        x = self.pool_and_cat(x)
-        x = self.conv4(x)
+        for i in range(self.num_layers):
+            if i < self.num_layers - 1:
+                x = self.activation(self.bn[i](self.convs[i](x)))
+                x = self.pool_and_cat(x)
+            else:
+                x = self.convs[i](x)
         return x
 
     def forward(self, x):
