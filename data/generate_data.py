@@ -29,9 +29,12 @@ def hawk_dove(x, y):
     col = np.array([[0, 1], 
                     [x, y]])
     
-    # Normalize
-    row = (row - np.min(row)) / (np.max(row) - np.min(row))
-    col = (col - np.min(col)) / (np.max(col) - np.min(col))
+    # Normalize by input player's payoffs
+    nmin = np.min(row)
+    nmax = np.max(row)
+
+    row = (row - nmin) / (nmax - nmin)
+    col = (col - nmin) / (nmax - nmin)
 
     return np.stack([row, col], axis=0)
 
@@ -41,9 +44,12 @@ def match_pennies(z, row_player):
     col = np.array([[0, 1], 
                     [1, 0]])
     
-    # Normalize
-    row = (row - np.min(row)) / (np.max(row) - np.min(row))
-    col = (col - np.min(col)) / (np.max(col) - np.min(col))
+    # Normalize by input player's payoffs
+    nmin = np.min(row) if row_player else np.min(col)
+    nmax = np.max(row) if row_player else np.max(col)
+
+    row = (row - nmin) / (nmax - nmin)
+    col = (col - nmin) / (nmax - nmin)
 
     if row_player:
         return np.stack([row, col], axis=0)
@@ -58,9 +64,12 @@ def hawk_middle_dove(a, b):
                     [1, 0, 1], 
                     [a, 0.75 * a, b]])
     
-    # Normalize
-    row = (row - np.min(row)) / (np.max(row) - np.min(row))
-    col = (col - np.min(col)) / (np.max(col) - np.min(col))
+    # Normalize by input player's payoffs
+    nmin = np.min(row)
+    nmax = np.max(row)
+
+    row = (row - nmin) / (nmax - nmin)
+    col = (col - nmin) / (nmax - nmin)
 
     return np.stack([row, col], axis=0)
 
@@ -72,9 +81,12 @@ def rock_scissors_paper(z, row_player):
                     [1, 0.5, 0], 
                     [0, 1, 0.5]])
     
-    # Normalize
-    row = (row - np.min(row)) / (np.max(row) - np.min(row))
-    col = (col - np.min(col)) / (np.max(col) - np.min(col))
+    # Normalize by input player's payoffs
+    nmin = np.min(row) if row_player else np.min(col)
+    nmax = np.max(row) if row_player else np.max(col)
+
+    row = (row - nmin) / (nmax - nmin)
+    col = (col - nmin) / (nmax - nmin)
 
     if row_player:
         return np.stack([row, col], axis=0)
@@ -117,6 +129,11 @@ if __name__ == '__main__':
             raise NotImplementedError("Invalid game name!")
 
     # Save data with pickle
+    two_action_data['x'] = np.array(two_action_data['x'])
+    two_action_data['y'] = np.array(two_action_data['y'])
+    three_action_data['x'] = np.array(three_action_data['x'])
+    three_action_data['y'] = np.array(three_action_data['y'])
+
     with open("two_action_data.p", "wb") as file:
         pickle.dump(two_action_data, file)
 
