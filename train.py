@@ -16,27 +16,27 @@ def load_data():
         two_action_train = pickle.load(file)
     x = torch.tensor(two_action_train['x'])
     y = torch.tensor(two_action_train['y'])
-    two_action_train_loader = DataLoader(TensorDataset(x, y), batch_size=batch_size, shuffle=True)
+    two_action_train_loader = DataLoader(TensorDataset(x, y), batch_size=batch_size, shuffle=True, drop_last=True)
 
     with open("data/two_action_data_test.p", "rb") as file:
         two_action_test = pickle.load(file)
     x = torch.tensor(two_action_test['x'])
     y = torch.tensor(two_action_test['y'])
-    two_action_test_loader = DataLoader(TensorDataset(x, y), batch_size=batch_size, shuffle=True)
+    two_action_test_loader = DataLoader(TensorDataset(x, y), batch_size=batch_size, shuffle=True, drop_last=True)
 
     with open("data/three_action_data_train.p", "rb") as file:
         three_action_train = pickle.load(file)
     x = torch.tensor(three_action_train['x'])
     y = torch.tensor(three_action_train['y'])
-    three_action_train_loader = DataLoader(TensorDataset(x, y), batch_size=batch_size, shuffle=True)
+    three_action_train_loader = DataLoader(TensorDataset(x, y), batch_size=batch_size, shuffle=True, drop_last=True)
 
     with open("data/three_action_data_test.p", "rb") as file:
         three_action_test = pickle.load(file)
     x = torch.tensor(three_action_test['x'])
     y = torch.tensor(three_action_test['y'])
-    three_action_test_loader = DataLoader(TensorDataset(x, y), batch_size=batch_size, shuffle=True)
+    three_action_test_loader = DataLoader(TensorDataset(x, y), batch_size=batch_size, shuffle=True, drop_last=True)
 
-    return two_action_train_loader, three_action_test_loader, two_action_test_loader, three_action_train_loader
+    return two_action_train_loader, three_action_train_loader, two_action_test_loader, three_action_test_loader
 
 # https://stackoverflow.com/questions/70849287/how-to-merge-multiple-iterators-to-get-a-new-iterator-which-will-iterate-over-th
 def combine_loaders_random(loaders):
@@ -54,10 +54,12 @@ if __name__ == '__main__':
     # Model hyperparameters
     in_dim = 2
     out_dim = 1
-    kernels = 8
+    kernels = 32
     mode='max_pool'
-    bias=True
-    residual=False
+    bias = True
+    residual = True
+
+    ### MAKE NETWORK DEEPER
 
     # Training hyperparameters
     batch_size = 32
@@ -86,7 +88,7 @@ if __name__ == '__main__':
     # Optimizer, scheduler, and loss
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
-    loss = torch.nn.CrossEntropyLoss(reduction='sum')
+    ce_loss = torch.nn.CrossEntropyLoss(reduction='sum')
 
     # Training loop
     train_loaders_copy = train_loaders.copy()
@@ -97,14 +99,16 @@ if __name__ == '__main__':
         t1 = default_timer()
         train_loss = 0
         correct_count = 0
+        total_count_train = 0
         for x, y in combined_train_loaders:
-            x = x.to(device)
-            y = y.to(device)
+            x = x.float().to(device)
+            y = y.float().to(device)
 
             out = model(x).reshape(batch_size, x.shape[-1])
-            loss = loss(out, y)
+            loss = ce_loss(out, y)
             train_loss += loss.item()
             correct_count += acc(out, y)
+            total_count_train += batch_size
 
             optimizer.zero_grad()
             loss.backward()
@@ -112,22 +116,35 @@ if __name__ == '__main__':
 
         test_loss = 0
         test_correct_count = 0
+        total_count_test = 0
         with torch.no_grad():
             for x, y in two_test_loader:
-                x = x.to(device)
-                y = y.to(device)
+                x = x.float().to(device)
+                y = y.float().to(device)
 
                 out = model(x).reshape(batch_size, x.shape[-1])
-                test_loss = loss(out, y)
+                loss = ce_loss(out, y)
+                test_loss += loss.item()
                 test_correct_count += acc(out, y)
+                total_count_test += batch_size
+
+            for x, y in three_test_loader:
+                x = x.float().to(device)
+                y = y.float().to(device)
+
+                out = model(x).reshape(batch_size, x.shape[-1])
+                loss = ce_loss(out, y)
+                test_loss += loss.item()
+                test_correct_count += acc(out, y)
+                total_count_test += batch_size
 
         t2 = default_timer()
         scheduler.step()
         print("Epoch " + str(ep) + " completed in " + "{0:.{1}f}".format(t2-t1, 3) + \
-              " seconds. Train err:", "{0:.{1}f}".format(train_loss/ntrain, 3), \
-                "Train acc:", "{0:.{1}f}".format(correct_count/ntest, 3), 
-                "Test err:", "{0:.{1}f}".format(test_loss/ntest, 3), \
-                "Test acc:", "{0:.{1}f}".format(test_correct_count/ntest, 3))
+              " seconds. Train err:", "{0:.{1}f}".format(train_loss/total_count_train, 3), \
+                "Train acc:", "{0:.{1}f}".format(correct_count/total_count_train, 3), 
+                "Test err:", "{0:.{1}f}".format(test_loss/total_count_test, 3), \
+                "Test acc:", "{0:.{1}f}".format(test_correct_count/total_count_test, 3))
         
         # At the end of each epoch, re-define the iterable
         train_loaders_copy = train_loaders.copy()
