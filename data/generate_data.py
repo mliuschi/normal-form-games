@@ -18,7 +18,7 @@ hawk_middle_dove_params = [(2,0), (4,0), (6,0), (8,0), (10,0),
 rsp_params = [(1, True), (2, True), (3, True), (5, True), (10, True),
               (1, False), (2, False), (3, False), (5, False), (10, False)]
 
-def idx_to_softmax(idx, dimension):
+def idx_to_one_hot(idx, dimension):
     x = np.zeros((dimension,))
     x[idx] = 1.
     return x
@@ -97,45 +97,64 @@ if __name__ == '__main__':
     two_action = pd.read_csv('two_action_games.csv').to_numpy()[:,1:]
     three_action = pd.read_csv('three_action_games.csv').to_numpy()[:,1:]
 
-    two_action_data = {'x': [], 'y': []}
-    three_action_data = {'x': [], 'y': []}
+    two_action_data_train = {'x': [], 'y': []}
+    three_action_data_train = {'x': [], 'y': []}
+    two_action_data_test = {'x': [], 'y': []}
+    three_action_data_test = {'x': [], 'y': []}
 
     for (game, choice) in two_action:
         if 'hdg' in game:
-            game_type = int(game[-1]) - 1 # - 1 to zero-index
+            game_type = int(game.split('_')[-1]) - 1 # - 1 to zero-index
             processed_choice = 1 - choice # convert the standard used in the dataset to valid index
-            two_action_data['x'].append(hawk_dove(*hawk_dove_params[game_type]))
-            two_action_data['y'].append(idx_to_softmax(processed_choice, 2))
+            if game_type < 9:
+                two_action_data_train['x'].append(hawk_dove(*hawk_dove_params[game_type]))
+                two_action_data_train['y'].append(idx_to_one_hot(processed_choice, 2))
+            else:
+                two_action_data_test['x'].append(hawk_dove(*hawk_dove_params[game_type]))
+                two_action_data_test['y'].append(idx_to_one_hot(processed_choice, 2))
         elif 'mp' in game:
-            game_type = int(game[-1]) - 1 # - 1 to zero-index
+            game_type = int(game.split('_')[-1]) - 1 # - 1 to zero-index
             processed_choice = 1 - choice # convert the standard used in the dataset to valid index
-            two_action_data['x'].append(match_pennies(*match_pennies_params[game_type]))
-            two_action_data['y'].append(idx_to_softmax(processed_choice, 2))
+            two_action_data_train['x'].append(match_pennies(*match_pennies_params[game_type]))
+            two_action_data_train['y'].append(idx_to_one_hot(processed_choice, 2))
         else:
             raise NotImplementedError("Invalid game name!")
         
     for (game, choice) in three_action:
         if 'ac' in game:
-            game_type = int(game[-1]) - 1 # - 1 to zero-index
+            game_type = int(game.split('_')[-1]) - 1 # - 1 to zero-index
             processed_choice = choice - 1 # convert the standard used in the dataset to valid index
-            three_action_data['x'].append(hawk_middle_dove(*hawk_middle_dove_params[game_type]))
-            three_action_data['y'].append(idx_to_softmax(processed_choice, 3))
+            three_action_data_train['x'].append(hawk_middle_dove(*hawk_middle_dove_params[game_type]))
+            three_action_data_train['y'].append(idx_to_one_hot(processed_choice, 3))
         elif 'rsp' in game:
-            game_type = int(game[-1]) - 1 # - 1 to zero-index
+            game_type = int(game.split('_')[-1]) - 1 # - 1 to zero-index
             processed_choice = choice - 1 # convert the standard used in the dataset to valid index
-            three_action_data['x'].append(rock_scissors_paper(*rsp_params[game_type]))
-            three_action_data['y'].append(idx_to_softmax(processed_choice, 3))
+            if game_type < 9:
+                three_action_data_train['x'].append(rock_scissors_paper(*rsp_params[game_type]))
+                three_action_data_train['y'].append(idx_to_one_hot(processed_choice, 3))
+            else:
+                three_action_data_test['x'].append(rock_scissors_paper(*rsp_params[game_type]))
+                three_action_data_test['y'].append(idx_to_one_hot(processed_choice, 3))
         else:
             raise NotImplementedError("Invalid game name!")
 
     # Save data with pickle
-    two_action_data['x'] = np.array(two_action_data['x'])
-    two_action_data['y'] = np.array(two_action_data['y'])
-    three_action_data['x'] = np.array(three_action_data['x'])
-    three_action_data['y'] = np.array(three_action_data['y'])
+    two_action_data_train['x'] = np.array(two_action_data_train['x'])
+    two_action_data_train['y'] = np.array(two_action_data_train['y'])
+    three_action_data_train['x'] = np.array(three_action_data_train['x'])
+    three_action_data_train['y'] = np.array(three_action_data_train['y'])
 
-    with open("two_action_data.p", "wb") as file:
-        pickle.dump(two_action_data, file)
+    two_action_data_test['x'] = np.array(two_action_data_test['x'])
+    two_action_data_test['y'] = np.array(two_action_data_test['y'])
+    three_action_data_test['x'] = np.array(three_action_data_test['x'])
+    three_action_data_test['y'] = np.array(three_action_data_test['y'])
 
-    with open("three_action_data.p", "wb") as file:
-        pickle.dump(three_action_data, file)
+    with open("two_action_data_train.p", "wb") as file:
+        pickle.dump(two_action_data_train, file)
+    with open("two_action_data_test.p", "wb") as file:
+        pickle.dump(two_action_data_test, file)
+
+    with open("three_action_data_train.p", "wb") as file:
+        pickle.dump(three_action_data_train, file)
+    with open("three_action_data_test.p", "wb") as file:
+        pickle.dump(three_action_data_test, file)

@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 class GameModelPooling(nn.Module):
     def __init__(self, in_planes=2, out_planes=1, kernels=8, mode='max_pool', 
-                 bias=True, non_local=False, residual=False):
+                 bias=True, residual=False):
         super().__init__()
 
         assert mode in ['max_pool', 'avg_pool']
@@ -26,7 +26,6 @@ class GameModelPooling(nn.Module):
         self.bn2 = nn.BatchNorm2d(kernels)
         self.bn3 = nn.BatchNorm2d(kernels)
 
-        self.non_local = non_local
         # weights initialization
         self._init_weight()
 
