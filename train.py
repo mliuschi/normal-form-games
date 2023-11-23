@@ -5,6 +5,9 @@ from model import GameModelPooling
 import random
 from timeit import default_timer
 
+def total_variation(outputs, targets):
+    return torch.sum(torch.norm(outputs - targets, p=float('inf'), dim=-1))
+
 def acc(outputs, targets):
     return torch.sum(torch.argmax(outputs, dim=-1) == torch.argmax(targets, dim=-1))
 
@@ -48,26 +51,30 @@ def combine_loaders_random(loaders):
         except StopIteration:
             loaders.remove(it)
 
+torch.manual_seed(0)
+random.seed(0)
+
 if __name__ == '__main__':
     device = torch.device('cuda')
 
+    # ckpts/backbone_kernels32_nlayers5_max_pool_biasTrue_softmax_residualTrue_ep50
     # Model hyperparameters
     in_dim = 2
     out_dim = 1
-    kernels = 32
-    num_layers = 6
-    activation = 'relu'
-    mode='max_pool'
+    kernels = 32 #32
+    num_layers = 5 #5
+    activation = 'relu' # 'softmax'
+    mode = 'max_pool'
     bias = True
     residual = True
-
-    ### MAKE NETWORK DEEPER
+    temperature = 1.0
+    dropout = 0.25
 
     # Training hyperparameters
     batch_size = 32
-    n_epochs = 500
-    learning_rate = 1e-3
-    scheduler_step = 100
+    n_epochs = 15
+    learning_rate = 1e-4
+    scheduler_step = 7
     scheduler_gamma = 0.5
 
     # Load and process data
@@ -76,15 +83,17 @@ if __name__ == '__main__':
 
     ntrain = len(two_train_loader.dataset) + len(three_train_loader.dataset)
     ntest = len(two_test_loader.dataset) + len(three_test_loader.dataset)
+    print("Testing on %d two-action and %d three-action samples" %(len(two_test_loader.dataset), len(three_test_loader.dataset)))
+    print()
 
     # Create model
     model_name = "backbone_kernels" + str(kernels) + "_nlayers" + str(num_layers) + "_" + mode + "_bias" + str(bias) + \
-                 "_" + activation + "_residual" + str(residual) + "_ep" + str(n_epochs)
+                 "_" + activation + "_residual" + str(residual) + "_ep" + str(n_epochs) + "_dropout" + str(dropout).replace('.', '_')
     save_path = "ckpts/" + model_name
 
     model = GameModelPooling(in_planes=in_dim, out_planes=out_dim, num_layers=num_layers,
                              kernels=kernels, mode=mode, bias=bias, residual=residual,
-                             activation=activation).to(device)
+                             activation=activation, temperature=temperature, dropout=dropout).to(device)
     
     print("Number of parameters:", count_params(model))
     print()
@@ -92,7 +101,7 @@ if __name__ == '__main__':
     # Optimizer, scheduler, and loss
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
-    ce_loss = torch.nn.CrossEntropyLoss(reduction='sum')
+    loss_fun = torch.nn.CrossEntropyLoss(reduction='sum')
 
     # Training loop
     train_loaders_copy = train_loaders.copy()
@@ -109,7 +118,7 @@ if __name__ == '__main__':
             y = y.float().to(device)
 
             out = model(x).reshape(batch_size, x.shape[-1])
-            loss = ce_loss(out, y)
+            loss = loss_fun(out, y)
             train_loss += loss.item()
             correct_count += acc(out, y)
             total_count_train += batch_size
@@ -119,6 +128,7 @@ if __name__ == '__main__':
             optimizer.step()
 
         test_loss = 0
+        test_tv = 0
         test_correct_count = 0
         total_count_test = 0
         with torch.no_grad():
@@ -127,8 +137,9 @@ if __name__ == '__main__':
                 y = y.float().to(device)
 
                 out = model(x).reshape(batch_size, x.shape[-1])
-                loss = ce_loss(out, y)
+                loss = loss_fun(out, y)
                 test_loss += loss.item()
+                test_tv += total_variation(out, y)
                 test_correct_count += acc(out, y)
                 total_count_test += batch_size
 
@@ -137,8 +148,9 @@ if __name__ == '__main__':
                 y = y.float().to(device)
 
                 out = model(x).reshape(batch_size, x.shape[-1])
-                loss = ce_loss(out, y)
+                loss = loss_fun(out, y)
                 test_loss += loss.item()
+                test_tv += total_variation(out, y)
                 test_correct_count += acc(out, y)
                 total_count_test += batch_size
 
@@ -148,11 +160,12 @@ if __name__ == '__main__':
               " seconds. Train err:", "{0:.{1}f}".format(train_loss/total_count_train, 3), \
                 "Train acc:", "{0:.{1}f}".format(correct_count/total_count_train, 3), 
                 "Test err:", "{0:.{1}f}".format(test_loss/total_count_test, 3), \
-                "Test acc:", "{0:.{1}f}".format(test_correct_count/total_count_test, 3))
+                "Test acc:", "{0:.{1}f}".format(test_correct_count/total_count_test, 3), \
+                "Test TV:", "{0:.{1}f}".format(test_tv/total_count_test, 3))
         
         # At the end of each epoch, re-define the iterable
         train_loaders_copy = train_loaders.copy()
         combined_train_loaders = combine_loaders_random(list(train_loaders_copy.values()))
 
-    #torch.save(model, save_path)
+    torch.save(model, save_path)
     print("Weights saved to", save_path)

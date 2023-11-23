@@ -7,16 +7,23 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+def last_dim_softmax(x):
+    return F.softmax(x, dim=-1)
+
 class GameModelPooling(nn.Module):
     def __init__(self, in_planes=2, out_planes=1, num_layers=4, kernels=8, mode='max_pool', 
-                 bias=True, residual=False, activation='relu'):
+                 bias=True, residual=False, activation='relu', temperature=1.0,
+                 dropout=0.0):
         super().__init__()
 
         assert mode in ['max_pool', 'avg_pool']
         self.mode = mode
         self.residual = residual
         self.num_layers = num_layers
+        self.temperature = temperature
         
+        self.dropout = nn.Dropout(dropout)
+
         if activation == 'relu':
             self.activation = F.relu
         elif activation == 'gelu':
@@ -25,6 +32,8 @@ class GameModelPooling(nn.Module):
             self.activation = F.tanh
         elif activation == 'sigmoid':
             self.activation = F.sigmoid
+        elif activation == 'softmax':
+            self.activation = last_dim_softmax
         else:
             raise NotImplementedError("Activation not implemented!")
 
@@ -55,6 +64,7 @@ class GameModelPooling(nn.Module):
                 residual = x
                 x = self.pool_and_cat(x)
             else:
+                x = self.dropout(x)
                 x = self.convs[i](x)
         return x
 
@@ -64,6 +74,7 @@ class GameModelPooling(nn.Module):
                 x = self.activation(self.bn[i](self.convs[i](x)))
                 x = self.pool_and_cat(x)
             else:
+                x = self.dropout(x)
                 x = self.convs[i](x)
         return x
 
@@ -78,7 +89,7 @@ class GameModelPooling(nn.Module):
         # run softmax and get marginal distribution for row player
         x = F.max_pool2d(x, kernel_size=(1,W)) # max pool across row player
         x = x.view(B,C,-1) # shape (B, C, H)
-        x = F.softmax(x, dim=-1) 
+        x = F.softmax(x / self.temperature, dim=-1) 
         #x = x.view(B, C, H, W)
         return x
 
@@ -88,9 +99,11 @@ class GameModelPooling(nn.Module):
         if self.mode == 'max_pool':
             x_row = F.max_pool2d(x, kernel_size=(1,W))
             x_col = F.max_pool2d(x, kernel_size=(H,1))
-        else:
+        elif self.mode == 'avg_pool':
             x_row = F.avg_pool2d(x, kernel_size=(1,W))
             x_col = F.avg_pool2d(x, kernel_size=(H,1))
+        else:
+            raise NotImplementedError("Unsupported pooling mode!")
         x_row = x_row.expand(x.size())
         x_col = x_row.expand(x.size())
         y = torch.cat((x, x_row, x_col), dim=1)
