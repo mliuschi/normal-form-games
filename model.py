@@ -13,7 +13,7 @@ def last_dim_softmax(x):
 class GameModelPooling(nn.Module):
     def __init__(self, in_planes=2, out_planes=1, num_layers=4, kernels=8, mode='max_pool', 
                  bias=True, residual=False, activation='relu', temperature=1.0,
-                 dropout=0.0):
+                 dropout=0.0, residual_skip=1, self_attention=False):
         super().__init__()
 
         assert mode in ['max_pool', 'avg_pool']
@@ -21,6 +21,8 @@ class GameModelPooling(nn.Module):
         self.residual = residual
         self.num_layers = num_layers
         self.temperature = temperature
+        self.residual_skip = residual_skip
+        self.self_attention = self_attention
         
         self.dropout = nn.Dropout(dropout)
 
@@ -53,6 +55,12 @@ class GameModelPooling(nn.Module):
         # normalization layers
         self.bn = torch.nn.ModuleList([nn.BatchNorm2d(kernels) for i in range(num_layers - 1)])
 
+        if self.self_attention:
+            self.query_conv = torch.nn.ModuleList([
+                nn.Conv2d(3*kernels, 3*kernels, kernel_size=1, bias=bias),
+                nn.Conv2d(3*kernels, kernels, kernel_size=1, bias=bias)
+            ])
+
         # weights initialization
         self._init_weight()
 
@@ -64,6 +72,40 @@ class GameModelPooling(nn.Module):
                 residual = x
                 x = self.pool_and_cat(x)
             else:
+                if self.self_attention:
+                    orig_shape = x.shape
+                    q = self.query_conv[0](x).reshape(x.shape[0], x.shape[1], -1)
+                    q = F.softmax(q, dim=-1)
+                    x = x * q.reshape(*orig_shape)
+                    x = self.query_conv[1](x)
+                    x = self.pool_and_cat(x)
+                    
+                x = self.dropout(x)
+                x = self.convs[i](x)
+        return x
+
+    def _forward_residual2(self, x): # skip ahead two layers
+        residual = 0.
+        skipped_layer = False
+        for i in range(self.num_layers):
+            if i < self.num_layers - 1:
+                if skipped_layer or i == 0:
+                    x = self.activation(self.bn[i](self.convs[i](x)) + residual)
+                    residual = x
+                    skipped_layer = False
+                else:
+                    x = self.activation(self.bn[i](self.convs[i](x)))
+                    skipped_layer = True
+                x = self.pool_and_cat(x)
+            else:
+                if self.self_attention:
+                    orig_shape = x.shape
+                    q = self.query_conv[0](x).reshape(x.shape[0], x.shape[1], -1)
+                    q = F.softmax(q, dim=-1)
+                    x = x * q.reshape(*orig_shape)
+                    x = self.query_conv[1](x)
+                    x = self.pool_and_cat(x)
+
                 x = self.dropout(x)
                 x = self.convs[i](x)
         return x
@@ -74,13 +116,26 @@ class GameModelPooling(nn.Module):
                 x = self.activation(self.bn[i](self.convs[i](x)))
                 x = self.pool_and_cat(x)
             else:
+                if self.self_attention:
+                    orig_shape = x.shape
+                    q = self.query_conv[0](x).reshape(x.shape[0], x.shape[1], -1)
+                    q = F.softmax(q, dim=-1)
+                    x = x * q.reshape(*orig_shape)
+                    x = self.query_conv[1](x)
+                    x = self.pool_and_cat(x)
+
                 x = self.dropout(x)
                 x = self.convs[i](x)
         return x
 
     def forward(self, x):
         if self.residual:
-            x = self._forward_residual(x)
+            if self.residual_skip == 1:
+                x = self._forward_residual(x)
+            elif self.residual_skip == 2:
+                x = self._forward_residual2(x)
+            else:
+                raise NotImplementedError("Residual skip must be 1 or 2!")
         else:
             x = self._forward_plain(x)
 

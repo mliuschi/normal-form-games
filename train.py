@@ -68,11 +68,13 @@ if __name__ == '__main__':
     bias = True
     residual = True
     temperature = 1.0
-    dropout = 0.25
+    dropout = 0.5
+    residual_type = 2
+    attention = True
 
     # Training hyperparameters
     batch_size = 32
-    n_epochs = 15
+    n_epochs = 30 # attention: 30 # other: 15
     learning_rate = 1e-4
     scheduler_step = 7
     scheduler_gamma = 0.5
@@ -88,12 +90,14 @@ if __name__ == '__main__':
 
     # Create model
     model_name = "backbone_kernels" + str(kernels) + "_nlayers" + str(num_layers) + "_" + mode + "_bias" + str(bias) + \
-                 "_" + activation + "_residual" + str(residual) + "_ep" + str(n_epochs) + "_dropout" + str(dropout).replace('.', '_')
+                 "_" + activation + "_residual" + str(residual) + "_ep" + str(n_epochs) + "_dropout" + str(dropout).replace('.', '_') + \
+                 "_skiptype" + str(residual_type) + "_selfatten" + str(attention)
     save_path = "ckpts/" + model_name
 
     model = GameModelPooling(in_planes=in_dim, out_planes=out_dim, num_layers=num_layers,
                              kernels=kernels, mode=mode, bias=bias, residual=residual,
-                             activation=activation, temperature=temperature, dropout=dropout).to(device)
+                             activation=activation, temperature=temperature, dropout=dropout,
+                             residual_skip=residual_type, self_attention=attention).to(device)
     
     print("Number of parameters:", count_params(model))
     print()
